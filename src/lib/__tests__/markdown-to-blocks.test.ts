@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { markdownToBlocks, normalizeNotionCodeLanguage } from "../markdown-to-blocks.js";
+import {
+  markdownToBlocks,
+  normalizeNotionCodeLanguage,
+  isLikelyValidLinkUrl,
+} from "../markdown-to-blocks.js";
 
 describe("markdownToBlocks", () => {
   it("converts heading 1", () => {
@@ -118,6 +122,23 @@ describe("markdownToBlocks", () => {
     const linkPart = richText.find((rt: any) => rt.text.link);
     expect(linkPart).toBeDefined();
     expect(linkPart.text.link.url).toBe("https://example.com");
+  });
+
+  it("renders [text](url) as plain text when url is not an actual URL (e.g. a template placeholder)", () => {
+    // Notion rejects pages.create/update with "Invalid URL for link." if the
+    // url isn't a real absolute URL.
+    const blocks = markdownToBlocks("[元のSlackスレッド]({SlackスレッドURL})");
+    const richText = (blocks[0].paragraph as any).rich_text;
+    expect(richText.some((rt: any) => rt.text.link)).toBe(false);
+    expect(richText[0].text.content).toBe("元のSlackスレッド（{SlackスレッドURL}）");
+  });
+
+  it("isLikelyValidLinkUrl accepts http(s)/mailto and rejects placeholders", () => {
+    expect(isLikelyValidLinkUrl("https://example.com")).toBe(true);
+    expect(isLikelyValidLinkUrl("http://example.com")).toBe(true);
+    expect(isLikelyValidLinkUrl("mailto:a@example.com")).toBe(true);
+    expect(isLikelyValidLinkUrl("{SlackスレッドURL}")).toBe(false);
+    expect(isLikelyValidLinkUrl("see below")).toBe(false);
   });
 
   it("handles strikethrough inline formatting", () => {

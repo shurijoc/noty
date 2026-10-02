@@ -41,6 +41,17 @@ const NOTION_VALID_CODE_LANGUAGES = new Set([
   "vhdl", "visual basic", "webassembly", "xml", "yaml", "java/c/c++/c#",
 ]);
 
+/**
+ * Notion rejects pages.create/update with "Invalid URL for link." if a rich_text
+ * link's `url` isn't an actual absolute URL. Markdown docs sometimes use the
+ * `[text](url)` syntax with a non-URL placeholder (e.g. a template variable like
+ * `[thread](${threadUrl})` left unexpanded, or `(see below)`), which must not be
+ * sent to Notion as a link.
+ */
+export function isLikelyValidLinkUrl(url: string): boolean {
+  return /^(https?:\/\/|mailto:)/i.test(url.trim());
+}
+
 /** Map an arbitrary fenced-code-block language tag to a Notion-valid one. */
 export function normalizeNotionCodeLanguage(lang: string): string {
   const normalized = lang.trim().toLowerCase();
@@ -116,12 +127,22 @@ function parseInlineFormatting(text: string): RichTextObject[] {
         annotations: { ...DEFAULT_ANNOTATIONS },
       });
     } else if (match[2]) {
-      // Link: [text](url)
-      results.push({
-        type: "text",
-        text: { content: match[3], link: { url: match[4] } },
-        annotations: { ...DEFAULT_ANNOTATIONS },
-      });
+      // Link: [text](url) — only treat as a real Notion link if the url
+      // actually looks like one; otherwise render as plain "text（url）"
+      // so Notion doesn't reject the request with "Invalid URL for link."
+      if (isLikelyValidLinkUrl(match[4])) {
+        results.push({
+          type: "text",
+          text: { content: match[3], link: { url: match[4] } },
+          annotations: { ...DEFAULT_ANNOTATIONS },
+        });
+      } else {
+        results.push({
+          type: "text",
+          text: { content: `${match[3]}（${match[4]}）` },
+          annotations: { ...DEFAULT_ANNOTATIONS },
+        });
+      }
     } else if (match[5]) {
       // Code: `text`
       results.push({
