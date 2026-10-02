@@ -207,8 +207,39 @@ function parseInlineFormatting(text: string): RichTextObject[] {
   return results;
 }
 
+/** Notion の rich_text.text.content は 1 要素あたり最大 2000 文字 */
+const NOTION_RICH_TEXT_MAX_LENGTH = 2000;
+
+/**
+ * Notion は rich_text 1要素の `text.content` を 2000 文字までしか受け付けない
+ * (超えると pages.create/update が validation_error で丸ごと失敗する)。長い
+ * 要素（長い code block や長い段落など）を複数の rich_text 要素に分割する。
+ */
+export function splitLongRichText(
+  richText: RichTextObject[],
+): RichTextObject[] {
+  const result: RichTextObject[] = [];
+  for (const item of richText) {
+    const content = item.text.content;
+    if (content.length <= NOTION_RICH_TEXT_MAX_LENGTH) {
+      result.push(item);
+      continue;
+    }
+    for (let i = 0; i < content.length; i += NOTION_RICH_TEXT_MAX_LENGTH) {
+      result.push({
+        ...item,
+        text: {
+          ...item.text,
+          content: content.slice(i, i + NOTION_RICH_TEXT_MAX_LENGTH),
+        },
+      });
+    }
+  }
+  return result;
+}
+
 function makeRichText(text: string): RichTextObject[] {
-  return parseInlineFormatting(text);
+  return splitLongRichText(parseInlineFormatting(text));
 }
 
 /** セパレーター行（| --- | :---: | など）かどうか判定 */
@@ -299,13 +330,13 @@ export function markdownToBlocks(markdown: string): NotionBlock[] {
         object: "block",
         type: "code",
         code: {
-          rich_text: [
+          rich_text: splitLongRichText([
             {
               type: "text",
               text: { content: codeLines.join("\n") },
               annotations: { ...DEFAULT_ANNOTATIONS },
             },
-          ],
+          ]),
           language: lang,
         },
       });

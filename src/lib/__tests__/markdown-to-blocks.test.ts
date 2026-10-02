@@ -3,6 +3,7 @@ import {
   markdownToBlocks,
   normalizeNotionCodeLanguage,
   isLikelyValidLinkUrl,
+  splitLongRichText,
 } from "../markdown-to-blocks.js";
 
 describe("markdownToBlocks", () => {
@@ -61,6 +62,28 @@ describe("markdownToBlocks", () => {
     expect(normalizeNotionCodeLanguage("TypeScript")).toBe("typescript");
     expect(normalizeNotionCodeLanguage("bash")).toBe("bash");
     expect(normalizeNotionCodeLanguage("not-a-real-language")).toBe("plain text");
+  });
+
+  it("splits a code block longer than 2000 chars into multiple rich_text items", () => {
+    // Notion rejects any single rich_text.text.content over 2000 chars.
+    const longLine = "x".repeat(2500);
+    const blocks = markdownToBlocks("```\n" + longLine + "\n```");
+    const code = blocks[0].code as any;
+    expect(code.rich_text.length).toBeGreaterThan(1);
+    expect(code.rich_text.every((rt: any) => rt.text.content.length <= 2000)).toBe(true);
+    expect(code.rich_text.map((rt: any) => rt.text.content).join("")).toBe(longLine);
+  });
+
+  it("splitLongRichText leaves short items untouched and chunks long ones", () => {
+    const short = { type: "text" as const, text: { content: "hi" }, annotations: {} as any };
+    expect(splitLongRichText([short])).toEqual([short]);
+
+    const longContent = "a".repeat(4500);
+    const long = { type: "text" as const, text: { content: longContent }, annotations: {} as any };
+    const chunks = splitLongRichText([long]);
+    expect(chunks).toHaveLength(3);
+    expect(chunks.every((c) => c.text.content.length <= 2000)).toBe(true);
+    expect(chunks.map((c) => c.text.content).join("")).toBe(longContent);
   });
 
   it("converts divider", () => {
