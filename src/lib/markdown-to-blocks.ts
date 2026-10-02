@@ -2,6 +2,55 @@
  * Parse Markdown into Notion Block objects (line-based parser).
  */
 
+/**
+ * Notion's code block `language` property only accepts a fixed enum
+ * (see the Notion API error for the full list). Common fence tags that are
+ * NOT in that enum map to the closest valid value; anything unrecognized
+ * falls back to "plain text" so page creation never fails on this field.
+ */
+const NOTION_CODE_LANGUAGE_ALIASES: Record<string, string> = {
+  text: "plain text",
+  txt: "plain text",
+  plaintext: "plain text",
+  sh: "shell",
+  zsh: "shell",
+  js: "javascript",
+  ts: "typescript",
+  jsx: "javascript",
+  tsx: "typescript",
+  py: "python",
+  yml: "yaml",
+  md: "markdown",
+  "objective-c": "objective-c",
+  cpp: "c++",
+  cs: "c#",
+};
+
+const NOTION_VALID_CODE_LANGUAGES = new Set([
+  "abap", "abc", "agda", "arduino", "ascii art", "assembly", "bash", "basic",
+  "bnf", "c", "c#", "c++", "clojure", "coffeescript", "coq", "css", "dart",
+  "dhall", "diff", "docker", "ebnf", "elixir", "elm", "erlang", "f#", "flow",
+  "fortran", "gherkin", "glsl", "go", "graphql", "groovy", "haskell", "hcl",
+  "html", "idris", "java", "javascript", "json", "julia", "kotlin", "latex",
+  "less", "lisp", "livescript", "llvm ir", "lua", "makefile", "markdown",
+  "markup", "matlab", "mathematica", "mermaid", "nix", "notion formula",
+  "objective-c", "ocaml", "pascal", "perl", "php", "plain text", "powershell",
+  "prolog", "protobuf", "purescript", "python", "r", "racket", "reason",
+  "ruby", "rust", "sass", "scala", "scheme", "scss", "shell", "smalltalk",
+  "solidity", "sql", "swift", "toml", "typescript", "vb.net", "verilog",
+  "vhdl", "visual basic", "webassembly", "xml", "yaml", "java/c/c++/c#",
+]);
+
+/** Map an arbitrary fenced-code-block language tag to a Notion-valid one. */
+export function normalizeNotionCodeLanguage(lang: string): string {
+  const normalized = lang.trim().toLowerCase();
+  if (NOTION_VALID_CODE_LANGUAGES.has(normalized)) return normalized;
+  if (NOTION_CODE_LANGUAGE_ALIASES[normalized]) {
+    return NOTION_CODE_LANGUAGE_ALIASES[normalized];
+  }
+  return "plain text";
+}
+
 type RichTextObject = {
   type: "text";
   text: { content: string; link?: { url: string } | null };
@@ -217,7 +266,7 @@ export function markdownToBlocks(markdown: string): NotionBlock[] {
     // Fenced code block
     const codeMatch = line.match(/^```(\w*)$/);
     if (codeMatch) {
-      const lang = codeMatch[1] || "plain text";
+      const lang = normalizeNotionCodeLanguage(codeMatch[1] || "plain text");
       const codeLines: string[] = [];
       i++;
       while (i < lines.length && !lines[i].match(/^```$/)) {

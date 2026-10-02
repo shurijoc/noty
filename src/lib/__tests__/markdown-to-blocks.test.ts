@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { markdownToBlocks } from "../markdown-to-blocks.js";
+import { markdownToBlocks, normalizeNotionCodeLanguage } from "../markdown-to-blocks.js";
 
 describe("markdownToBlocks", () => {
   it("converts heading 1", () => {
@@ -41,6 +41,22 @@ describe("markdownToBlocks", () => {
     const code = blocks[0].code as any;
     expect(code.language).toBe("typescript");
     expect(code.rich_text[0].text.content).toBe("const x = 1;");
+  });
+
+  it("maps a non-Notion code fence language to a valid enum value (text -> plain text)", () => {
+    // Notion's code block `language` is a fixed enum; "text" is not a member
+    // of it (the API rejects page creation otherwise).
+    const blocks = markdownToBlocks("```text\nhello\n```");
+    const code = blocks[0].code as any;
+    expect(code.language).toBe("plain text");
+  });
+
+  it("normalizeNotionCodeLanguage maps common aliases and falls back for unknowns", () => {
+    expect(normalizeNotionCodeLanguage("text")).toBe("plain text");
+    expect(normalizeNotionCodeLanguage("sh")).toBe("shell");
+    expect(normalizeNotionCodeLanguage("TypeScript")).toBe("typescript");
+    expect(normalizeNotionCodeLanguage("bash")).toBe("bash");
+    expect(normalizeNotionCodeLanguage("not-a-real-language")).toBe("plain text");
   });
 
   it("converts divider", () => {
